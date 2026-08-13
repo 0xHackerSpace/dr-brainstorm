@@ -1,0 +1,21 @@
+---
+galaxy_info:
+  role_name: backup_agent
+  author: 0xHackerSpace
+  description: Schedules backups on the primary and verifies restores at the recovery site.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: EL
+      versions:
+        - "9"
+    - name: Ubuntu
+      versions:
+        - jammy
+        - noble
+  galaxy_tags:
+    - dr
+    - backup
+
+dependencies:
+  - role: common

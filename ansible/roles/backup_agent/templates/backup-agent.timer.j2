@@ -1,0 +1,19 @@
+#jinja2: trim_blocks: True, lstrip_blocks: True
+# {{ ansible_managed }}
+[Unit]
+Description=DR backup schedule ({{ dr_backup_interval_minutes }}m, RPO {{ dr_rpo_minutes }}m)
+
+[Timer]
+OnCalendar={{ backup_agent_oncalendar | trim }}
+
+# Catch up after downtime: a host that was off must not silently skip the
+# window that would have kept it inside its RPO.
+Persistent=true
+
+# Spread starts so a fleet does not saturate the replication link at once.
+RandomizedDelaySec={{ [(dr_backup_interval_minutes | int * 6), 300] | min }}
+AccuracySec=30s
+Unit={{ backup_agent_service_unit }}
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,37 @@
+---
+# Restore verification. Runs only at the recovery site: restoring a sample where
+# the data already lives proves nothing about the copy that crossed the link.
+
+- name: Install the restore verification script
+  ansible.builtin.template:
+    src: dr-backup-verify.sh.j2
+    dest: "{{ backup_agent_verify_bin }}"
+    owner: root
+    group: root
+    mode: "0750"
+    validate: "bash -n %s"
+
+- name: Install the restore verification service unit
+  ansible.builtin.template:
+    src: backup-verify.service.j2
+    dest: "{{ backup_agent_systemd_dir }}/{{ backup_agent_service }}-verify.service"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload systemd
+
+- name: Install the restore verification timer unit
+  ansible.builtin.template:
+    src: backup-verify.timer.j2
+    dest: "{{ backup_agent_systemd_dir }}/{{ backup_agent_service }}-verify.timer"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload systemd
+
+- name: Enable restore verification
+  ansible.builtin.systemd_service:
+    name: "{{ backup_agent_service }}-verify.timer"
+    state: started
+    enabled: true
+    daemon_reload: true

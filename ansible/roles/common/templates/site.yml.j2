@@ -1,0 +1,25 @@
+#jinja2: trim_blocks: True, lstrip_blocks: True
+# {{ ansible_managed }}
+# DR facts for {{ inventory_hostname }} — read this first during an incident.
+---
+project: {{ dr_project }}
+environment: {{ dr_environment }}
+
+site:
+  role: {{ dr_site_role }}
+  region: {{ dr_site_region }}
+  hostname: {{ inventory_hostname }}
+
+objectives:
+  strategy: {{ dr_strategy }}
+  rpo_minutes: {{ dr_rpo_minutes }}
+  rto_minutes: {{ dr_rto_minutes }}
+
+backup:
+  interval_minutes: {{ dr_backup_interval_minutes }}
+  retention_days: {{ dr_backup_retention_days }}
+  target: {{ dr_backup_target }}
+
+runbooks:
+  failover: docs/runbooks/failover.md
+  restore_test: docs/runbooks/restore-test.md

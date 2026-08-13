@@ -1,0 +1,6 @@
+---
+dr_site_role: recovery
+dr_site_region: "{{ dr_recovery_region }}"
+
+# The recovery site receives copies and must be able to restore them on demand.
+backup_agent_mode: target

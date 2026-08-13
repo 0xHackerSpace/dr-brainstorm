@@ -1,0 +1,30 @@
+---
+# Backup agent. On the primary it produces copies; on the recovery site it
+# verifies them and can restore. Set per-group via backup_agent_mode.
+
+backup_agent_mode: source # source | target
+
+backup_agent_config_dir: /etc/dr-brainstorm
+backup_agent_config_file: "{{ backup_agent_config_dir }}/backup-agent.conf"
+
+backup_agent_service: dr-backup-agent
+backup_agent_state_dir: /var/lib/dr-brainstorm
+
+# Paths captured on the primary. Everything that is not here is, by definition,
+# not part of the recovery plan.
+backup_agent_include_paths:
+  - /etc
+  - /srv
+
+backup_agent_exclude_patterns:
+  - "*.tmp"
+  - "*/cache/*"
+
+# A backup that has never been restored is a hypothesis. The recovery site
+# restores a sample on this cadence to keep it a fact.
+backup_agent_verify_enabled: true
+backup_agent_verify_schedule: "Sun *-*-* 04:00:00"
+
+# Fail the run if the last successful backup is older than the RPO. Silent
+# staleness is the single most common way a DR plan turns out to be fiction.
+backup_agent_alert_on_stale: true

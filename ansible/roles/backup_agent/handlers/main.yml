@@ -1,0 +1,12 @@
+---
+- name: Reload systemd
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+
+- name: Restart backup agent timer
+  ansible.builtin.systemd_service:
+    name: "{{ backup_agent_timer_unit }}"
+    state: restarted
+  # Restarting a timer the recovery site keeps deliberately stopped would
+  # re-arm backups on the wrong side of the pair.
+  when: backup_agent_mode == 'source'

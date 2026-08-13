@@ -1,0 +1,38 @@
+#jinja2: trim_blocks: True, lstrip_blocks: True
+# {{ ansible_managed }}
+# Backup agent configuration for {{ inventory_hostname }} ({{ backup_agent_mode }}).
+
+[identity]
+project      = {{ dr_project }}
+environment  = {{ dr_environment }}
+host         = {{ inventory_hostname }}
+site_role    = {{ dr_site_role }}
+region       = {{ dr_site_region }}
+
+[objectives]
+strategy         = {{ dr_strategy }}
+rpo_minutes      = {{ dr_rpo_minutes }}
+rto_minutes      = {{ dr_rto_minutes }}
+interval_minutes = {{ dr_backup_interval_minutes }}
+retention_days   = {{ dr_backup_retention_days }}
+
+[repository]
+target    = {{ dr_backup_target }}
+state_dir = {{ backup_agent_state_dir }}
+
+[scope]
+{% for path in backup_agent_include_paths %}
+include = {{ path }}
+{% endfor %}
+{% for pattern in backup_agent_exclude_patterns %}
+exclude = {{ pattern }}
+{% endfor %}
+
+[alerting]
+# A backup older than the RPO means the objective is already missed.
+alert_on_stale  = {{ backup_agent_alert_on_stale | ternary('true', 'false') }}
+stale_after_min = {{ dr_rpo_minutes }}
+
+[verification]
+enabled  = {{ (backup_agent_mode == 'target' and backup_agent_verify_enabled) | ternary('true', 'false') }}
+schedule = {{ backup_agent_verify_schedule }}

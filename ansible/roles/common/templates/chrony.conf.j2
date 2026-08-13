@@ -1,0 +1,15 @@
+#jinja2: trim_blocks: True, lstrip_blocks: True
+# {{ ansible_managed }}
+{% for server in common_ntp_servers %}
+server {{ server }} iburst
+{% endfor %}
+
+driftfile /var/lib/chrony/drift
+makestep 1.0 3
+rtcsync
+
+# Step the clock aggressively on boot: a recovery host that has been powered off
+# for weeks would otherwise slew for hours before its timestamps are trustworthy.
+initstepslew 30 {{ common_ntp_servers | first }}
+
+logdir /var/log/chrony

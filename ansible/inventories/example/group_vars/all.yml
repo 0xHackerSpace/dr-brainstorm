@@ -1,0 +1,22 @@
+---
+# Mirrors the `dr_summary` output of the Terraform root module. Keep the two in
+# sync — the objectives declared here are what the runbooks are tested against.
+
+dr_project: dr-brainstorm
+dr_environment: example
+
+dr_strategy: warm_standby
+dr_primary_region: region-a
+dr_recovery_region: region-b
+
+dr_rpo_minutes: 60
+dr_rto_minutes: 30
+
+dr_backup_interval_minutes: 30
+dr_backup_retention_days: 30
+
+# Where backup copies are shipped. Replaced by an object-store URL or a backup
+# server address once a provider is chosen.
+dr_backup_target: "file:///var/backups/dr-brainstorm"
+
+ansible_user: ansible

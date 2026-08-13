@@ -1,0 +1,21 @@
+---
+# Baseline every DR-managed host gets, on both sides of the pair.
+
+common_timezone: UTC
+
+# Clock drift between sites corrupts log correlation and makes
+# point-in-time restores ambiguous, so time sync is not optional.
+common_ntp_servers:
+  - 0.pool.ntp.org
+  - 1.pool.ntp.org
+
+common_packages:
+  - rsync
+  - curl
+  - jq
+
+# Where the rendered DR facts file lands, for humans and for the runbooks.
+common_facts_dir: /etc/dr-brainstorm
+common_facts_file: "{{ common_facts_dir }}/site.yml"
+
+common_manage_timesync: true

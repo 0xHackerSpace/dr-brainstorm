@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# {{ ansible_managed }}
+#
+# Reference backup agent. Deliberately boring: rsync into a timestamped
+# directory, prune by retention, record the run. It exists so the schedule,
+# retention and staleness alarms are exercised end to end while the repository
+# is still provider-agnostic. A real backend replaces this script, not the
+# surrounding units or configuration.
+set -euo pipefail
+
+CONFIG="{{ backup_agent_config_file }}"
+STATE_DIR="{{ backup_agent_state_dir }}"
+TARGET="{{ dr_backup_target }}"
+RETENTION_DAYS={{ dr_backup_retention_days }}
+
+log() { printf '%s dr-backup-agent: %s\n' "$(date -u +%FT%TZ)" "$*"; }
+
+[[ -r "$CONFIG" ]] || { log "missing config $CONFIG"; exit 78; }
+
+# Only local paths are supported by this reference implementation.
+case "$TARGET" in
+  file://*) DEST="${TARGET#file://}" ;;
+  *) log "unsupported target '$TARGET'; a real backend is required"; exit 78 ;;
+esac
+
+STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+SNAPSHOT="$DEST/{{ inventory_hostname }}/$STAMP"
+LATEST="$DEST/{{ inventory_hostname }}/latest"
+
+mkdir -p "$SNAPSHOT" "$STATE_DIR"
+
+# --link-dest hardlinks unchanged files against the previous snapshot, so each
+# run costs only the delta while every snapshot still reads as a full copy.
+LINK_DEST=()
+[[ -d "$LATEST" ]] && LINK_DEST=(--link-dest="$(readlink -f "$LATEST")")
+
+rsync_status=0
+rsync -aAX --delete --numeric-ids \
+{% for pattern in backup_agent_exclude_patterns %}
+  --exclude='{{ pattern }}' \
+{% endfor %}
+  "${LINK_DEST[@]}" \
+{% for path in backup_agent_include_paths %}
+  '{{ path }}' \
+{% endfor %}
+  "$SNAPSHOT/" || rsync_status=$?
+
+# 24 = files vanished mid-transfer. Normal on a live system, not a failure.
+if (( rsync_status != 0 && rsync_status != 24 )); then
+  log "rsync failed with status $rsync_status"
+  rm -rf "$SNAPSHOT"
+  exit "$rsync_status"
+fi
+
+ln -sfn "$SNAPSHOT" "$LATEST"
+
+# Prune only after the new snapshot is in place, so a failed run never leaves
+# the site with fewer copies than it started with.
+find "$DEST/{{ inventory_hostname }}" -mindepth 1 -maxdepth 1 -type d \
+  -mtime "+$RETENTION_DAYS" -exec rm -rf {} +
+
+date -u +%s > "$STATE_DIR/last-success"
+log "snapshot $STAMP complete"

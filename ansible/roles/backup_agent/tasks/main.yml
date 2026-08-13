@@ -1,0 +1,96 @@
+---
+- name: Assert the backup interval can meet the RPO
+  ansible.builtin.assert:
+    that:
+      - dr_backup_interval_minutes | int > 0
+      - dr_backup_interval_minutes | int <= dr_rpo_minutes | int
+      - dr_backup_interval_minutes | int <= 1440
+    fail_msg: >-
+      Backup interval ({{ dr_backup_interval_minutes }}m) cannot satisfy an RPO
+      of {{ dr_rpo_minutes }}m. Lower the interval or accept a larger RPO.
+    quiet: true
+
+- name: Assert the agent mode is known
+  ansible.builtin.assert:
+    that:
+      - backup_agent_mode in ['source', 'target']
+    fail_msg: "backup_agent_mode must be 'source' or 'target', got '{{ backup_agent_mode }}'."
+    quiet: true
+
+- name: Create the agent state directory
+  ansible.builtin.file:
+    path: "{{ backup_agent_state_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "{{ backup_agent_state_mode }}"
+
+- name: Write the backup agent configuration
+  ansible.builtin.template:
+    src: backup-agent.conf.j2
+    dest: "{{ backup_agent_config_file }}"
+    owner: root
+    group: root
+    mode: "{{ backup_agent_config_mode }}"
+    validate: "test -s %s"
+  notify: Restart backup agent timer
+
+- name: Install the reference backup agent
+  ansible.builtin.template:
+    src: dr-backup-agent.sh.j2
+    dest: "{{ backup_agent_bin }}"
+    owner: root
+    group: root
+    mode: "0750"
+    validate: "bash -n %s"
+  notify: Restart backup agent timer
+
+- name: Install the backup agent service unit
+  ansible.builtin.template:
+    src: backup-agent.service.j2
+    dest: "{{ backup_agent_systemd_dir }}/{{ backup_agent_service_unit }}"
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload systemd
+    - Restart backup agent timer
+
+- name: Install the backup agent timer unit
+  ansible.builtin.template:
+    src: backup-agent.timer.j2
+    dest: "{{ backup_agent_systemd_dir }}/{{ backup_agent_timer_unit }}"
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload systemd
+    - Restart backup agent timer
+
+# Handlers normally run at the end of the play, but the timer must exist before
+# it can be enabled below.
+- name: Apply pending unit changes before enabling the timer
+  ansible.builtin.meta: flush_handlers
+
+# Only the primary produces backups on a schedule. The recovery site runs the
+# same agent, but restores on demand rather than on a clock.
+- name: Enable the backup timer on the source side
+  ansible.builtin.systemd_service:
+    name: "{{ backup_agent_timer_unit }}"
+    state: started
+    enabled: true
+    daemon_reload: true
+  when: backup_agent_mode == 'source'
+
+- name: Disable the backup timer on the target side
+  ansible.builtin.systemd_service:
+    name: "{{ backup_agent_timer_unit }}"
+    state: stopped
+    enabled: false
+  when: backup_agent_mode == 'target'
+
+- name: Schedule periodic restore verification at the recovery site
+  ansible.builtin.include_tasks: verify.yml
+  when:
+    - backup_agent_mode == 'target'
+    - backup_agent_verify_enabled | bool

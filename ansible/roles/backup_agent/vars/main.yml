@@ -1,0 +1,23 @@
+---
+# Internal to the role. Override defaults/main.yml, not this file.
+
+backup_agent_bin: /usr/local/sbin/dr-backup-agent
+backup_agent_verify_bin: /usr/local/sbin/dr-backup-verify
+
+backup_agent_systemd_dir: /etc/systemd/system
+backup_agent_timer_unit: "{{ backup_agent_service }}.timer"
+backup_agent_service_unit: "{{ backup_agent_service }}.service"
+
+# The config can carry repository credentials once a real backend is wired in,
+# so it is root-only from day one rather than tightened later.
+backup_agent_config_mode: "0640"
+backup_agent_state_mode: "0750"
+
+# systemd OnCalendar equivalent of the interval driven by the RPO. Sub-hourly
+# intervals repeat within the hour; anything longer repeats on the hour.
+backup_agent_oncalendar: >-
+  {{
+    '*:0/' ~ dr_backup_interval_minutes
+    if dr_backup_interval_minutes < 60
+    else '*-*-* 0/' ~ (dr_backup_interval_minutes // 60) ~ ':00:00'
+  }}

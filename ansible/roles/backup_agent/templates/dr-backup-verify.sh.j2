@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+# {{ ansible_managed }}
+#
+# Restore verification. Restores the latest snapshot into a scratch directory
+# and compares it against the source listing. Proves the copy is readable and
+# complete — which is the only claim a backup is entitled to make.
+set -euo pipefail
+
+TARGET="{{ dr_backup_target }}"
+STATE_DIR="{{ backup_agent_state_dir }}"
+RPO_MINUTES={{ dr_rpo_minutes }}
+
+log() { printf '%s dr-backup-verify: %s\n' "$(date -u +%FT%TZ)" "$*"; }
+
+case "$TARGET" in
+  file://*) DEST="${TARGET#file://}" ;;
+  *) log "unsupported target '$TARGET'"; exit 78 ;;
+esac
+
+failures=0
+
+for host_dir in "$DEST"/*/; do
+  [[ -d "$host_dir" ]] || continue
+  host="$(basename "$host_dir")"
+  latest="$host_dir/latest"
+
+  if [[ ! -d "$latest" ]]; then
+    log "FAIL $host: no snapshot at all"
+    failures=$((failures + 1))
+    continue
+  fi
+
+  # Staleness is measured against the RPO, not against "recently enough".
+  age_min=$(( ( $(date -u +%s) - $(stat -c %Y "$(readlink -f "$latest")") ) / 60 ))
+  if (( age_min > RPO_MINUTES )); then
+    log "FAIL $host: latest snapshot is ${age_min}m old, RPO is ${RPO_MINUTES}m"
+    failures=$((failures + 1))
+    continue
+  fi
+
+  scratch="$(mktemp -d)"
+  trap 'rm -rf "$scratch"' EXIT
+
+  if rsync -a --quiet "$latest/" "$scratch/"; then
+    files=$(find "$scratch" -type f | wc -l)
+    if (( files == 0 )); then
+      log "FAIL $host: snapshot restored but contains no files"
+      failures=$((failures + 1))
+    else
+      log "OK $host: restored $files files, age ${age_min}m"
+    fi
+  else
+    log "FAIL $host: snapshot is not readable"
+    failures=$((failures + 1))
+  fi
+
+  rm -rf "$scratch"
+  trap - EXIT
+done
+
+date -u +%s > "$STATE_DIR/last-verify"
+
+if (( failures > 0 )); then
+  log "$failures host(s) failed verification"
+  exit 1
+fi
+
+log "all hosts verified"

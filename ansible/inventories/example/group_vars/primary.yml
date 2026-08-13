@@ -1,0 +1,6 @@
+---
+dr_site_role: primary
+dr_site_region: "{{ dr_primary_region }}"
+
+# The primary produces backups; it never restores from itself.
+backup_agent_mode: source

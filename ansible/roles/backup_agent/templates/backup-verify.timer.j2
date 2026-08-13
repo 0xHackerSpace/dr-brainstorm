@@ -1,0 +1,13 @@
+#jinja2: trim_blocks: True, lstrip_blocks: True
+# {{ ansible_managed }}
+[Unit]
+Description=DR restore verification schedule
+
+[Timer]
+OnCalendar={{ backup_agent_verify_schedule }}
+Persistent=true
+RandomizedDelaySec=600
+Unit={{ backup_agent_service }}-verify.service
+
+[Install]
+WantedBy=timers.target

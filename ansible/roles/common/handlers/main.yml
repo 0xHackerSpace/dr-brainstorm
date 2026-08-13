@@ -1,0 +1,6 @@
+---
+- name: Restart time synchronisation
+  ansible.builtin.service:
+    name: "{{ common_timesync_service }}"
+    state: restarted
+  when: common_manage_timesync | bool

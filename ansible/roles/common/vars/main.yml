@@ -1,0 +1,12 @@
+---
+# Internal to the role — not meant to be overridden from the inventory.
+# Override the values in defaults/main.yml instead.
+
+common_timesync_service: chronyd
+common_timesync_package: chrony
+common_timesync_config: /etc/chrony.conf
+
+# Mode 0644: the facts file is read by unprivileged operators during an
+# incident and holds no secrets.
+common_facts_mode: "0644"
+common_facts_dir_mode: "0755"

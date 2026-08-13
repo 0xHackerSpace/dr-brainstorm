@@ -1,0 +1,39 @@
+---
+# Entry point: brings every managed host to the baseline the DR plan assumes.
+#
+#   ansible-playbook playbooks/main.yml --check --diff
+#   ansible-playbook playbooks/main.yml --limit recovery
+#
+# This playbook is convergent and safe to re-run. It does NOT perform a
+# failover — that is a separate, deliberately manual runbook. See
+# docs/runbooks/failover.md.
+
+- name: Apply DR baseline to all managed hosts
+  hosts: dr_managed
+  become: true
+  gather_facts: true
+
+  pre_tasks:
+    - name: Assert the host declares which side of the DR pair it is on
+      ansible.builtin.assert:
+        that:
+          - dr_site_role in ['primary', 'recovery']
+        fail_msg: >-
+          Host {{ inventory_hostname }} has no valid dr_site_role. Every managed
+          host must be in the 'primary' or 'recovery' inventory group.
+        quiet: true
+
+  roles:
+    - role: common
+      tags: [common, baseline]
+
+    - role: backup_agent
+      tags: [backup, baseline]
+
+  post_tasks:
+    - name: Report the DR posture applied to this host
+      ansible.builtin.debug:
+        msg: >-
+          {{ inventory_hostname }} ({{ dr_site_role }}) configured for
+          {{ dr_strategy }} — RPO {{ dr_rpo_minutes }}m, RTO {{ dr_rto_minutes }}m,
+          backups every {{ dr_backup_interval_minutes }}m.

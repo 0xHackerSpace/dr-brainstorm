@@ -1,0 +1,51 @@
+---
+- name: Install baseline packages
+  ansible.builtin.package:
+    name: "{{ common_packages }}"
+    state: present
+
+- name: Set the system timezone
+  community.general.timezone:
+    name: "{{ common_timezone }}"
+  notify: Restart time synchronisation
+
+- name: Configure time synchronisation
+  when: common_manage_timesync | bool
+  block:
+    - name: Install the time synchronisation package
+      ansible.builtin.package:
+        name: "{{ common_timesync_package }}"
+        state: present
+
+    - name: Write the time synchronisation configuration
+      ansible.builtin.template:
+        src: chrony.conf.j2
+        dest: "{{ common_timesync_config }}"
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Restart time synchronisation
+
+    - name: Enable time synchronisation
+      ansible.builtin.service:
+        name: "{{ common_timesync_service }}"
+        state: started
+        enabled: true
+
+- name: Create the DR facts directory
+  ansible.builtin.file:
+    path: "{{ common_facts_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "{{ common_facts_dir_mode }}"
+
+# Written to disk so an operator on a console — with no Ansible, no network and
+# no wiki — can still see what this host is supposed to do.
+- name: Render the DR facts file
+  ansible.builtin.template:
+    src: site.yml.j2
+    dest: "{{ common_facts_file }}"
+    owner: root
+    group: root
+    mode: "{{ common_facts_mode }}"

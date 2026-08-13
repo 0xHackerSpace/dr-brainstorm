@@ -1,0 +1,26 @@
+#jinja2: trim_blocks: True, lstrip_blocks: True
+# {{ ansible_managed }}
+[Unit]
+Description=DR backup run for {{ dr_project }}/{{ dr_environment }}
+Documentation=file://{{ backup_agent_config_file }}
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart={{ backup_agent_bin }}
+Nice=10
+IOSchedulingClass=idle
+
+# A backup run must never outlive its own interval, or runs pile up on top of
+# each other and the site quietly stops meeting its RPO.
+TimeoutStartSec={{ (dr_backup_interval_minutes | int * 60 * 0.8) | int }}
+
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+NoNewPrivileges=true
+ReadWritePaths={{ backup_agent_state_dir }} {{ dr_backup_target | regex_replace('^file://', '') }}
+
+[Install]
+WantedBy=multi-user.target
