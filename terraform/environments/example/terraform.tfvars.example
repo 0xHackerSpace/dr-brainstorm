@@ -1,0 +1,26 @@
+# Example environment — copy to terraform.tfvars and adjust.
+#   terraform plan -var-file=environments/example/terraform.tfvars
+#
+# Region strings are provider-specific. The values below are placeholders while
+# the repository is provider-agnostic (see docs/adr/0001-provider-agnostic-baseline.md).
+
+project     = "dr-brainstorm"
+environment = "example"
+
+primary_region  = "region-a"
+recovery_region = "region-b"
+
+# Warm standby: half the primary capacity stays running, so a 30 minute RTO is
+# achievable. Dropping to pilot_light here would fail the objectives check in
+# terraform/main.tf.
+dr_strategy = "warm_standby"
+
+rpo_minutes = 60
+rto_minutes = 30
+
+backup_retention_days = 30
+
+tags = {
+  Owner    = "platform"
+  CostCode = "none"
+}
