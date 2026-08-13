@@ -1,0 +1,171 @@
+---
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# A newer push makes an in-flight run irrelevant.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  TERRAFORM_VERSION: "1.9.8"
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  terraform:
+    name: Terraform
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: terraform
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+
+      - name: Check formatting
+        run: terraform fmt -recursive -check -diff
+
+      # No credentials and no remote state: validation must work for anyone who
+      # clones the repository, including a first-time contributor.
+      - name: Initialise without a backend
+        run: terraform init -backend=false -input=false
+
+      - name: Validate
+        run: terraform validate -no-color
+
+      - name: Validate each module in isolation
+        run: |
+          set -euo pipefail
+          for dir in modules/*/; do
+            echo "::group::validate $dir"
+            terraform -chdir="$dir" init -backend=false -input=false
+            terraform -chdir="$dir" validate -no-color
+            echo "::endgroup::"
+          done
+
+      - name: Plan the example environment
+        run: |
+          terraform plan -input=false -no-color \
+            -var-file=environments/example/terraform.tfvars.example
+
+      # The guardrail is only worth having if it actually blocks. Assert the
+      # impossible configuration is rejected, not merely warned about.
+      - name: Reject an unachievable DR posture
+        run: |
+          set -uo pipefail
+          if terraform plan -input=false -no-color \
+               -var-file=environments/example/terraform.tfvars.example \
+               -var 'dr_strategy=pilot_light' > /dev/null 2>&1; then
+            echo "::error::pilot_light with a 30m RTO planned successfully; the objectives_are_achievable preconditions are not blocking."
+            exit 1
+          fi
+          terraform plan -input=false -no-color \
+            -var-file=environments/example/terraform.tfvars.example \
+            -var 'dr_strategy=pilot_light' -var 'rto_minutes=120' > /dev/null
+
+  ansible:
+    name: Ansible
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install tooling
+        run: pip install --disable-pip-version-check ansible-core ansible-lint yamllint
+
+      - name: Install collections
+        run: ansible-galaxy collection install -r ansible/requirements.yml
+
+      - name: yamllint
+        run: yamllint .
+
+      - name: ansible-lint
+        run: ansible-lint
+
+      - name: Syntax check
+        working-directory: ansible
+        run: >-
+          ansible-playbook -i inventories/example/hosts.ini
+          playbooks/main.yml --syntax-check
+
+      # Catches shell bugs in the templated agent scripts, which no YAML linter
+      # would ever see.
+      - name: Shell-check the templated agent scripts
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
+          mkdir -p /tmp/rendered
+          for f in ansible/roles/*/templates/*.sh.j2; do
+            out="/tmp/rendered/$(basename "${f%.j2}")"
+            # Replace Jinja expressions with inert placeholders so the shell
+            # grammar can be checked without running Ansible.
+            sed -E 's/\{\{[^}]*\}\}/PLACEHOLDER/g; /\{%/d' "$f" > "$out"
+            bash -n "$out"
+            shellcheck -S warning "$out"
+          done
+
+  specs:
+    name: Specs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check spec naming and required sections
+        run: |
+          set -euo pipefail
+          rc=0
+          for f in specs/[0-9]*.md; do
+            [ -e "$f" ] || continue
+            base=$(basename "$f")
+            if ! [[ "$base" =~ ^[0-9]{4}-[a-z0-9-]+\.md$ ]]; then
+              echo "::error file=$f::name must match NNNN-kebab-case.md"
+              rc=1
+            fi
+            for section in "## Context" "## Decision" "## Scope" "## Acceptance criteria"; do
+              if ! grep -qF "$section" "$f"; then
+                echo "::error file=$f::missing required section '$section'"
+                rc=1
+              fi
+            done
+            if ! grep -qE '^- \*\*Status:\*\* (Draft|Accepted|Implemented|Superseded)$' "$f"; then
+              echo "::error file=$f::missing or invalid Status line"
+              rc=1
+            fi
+          done
+          exit $rc
+
+      - name: Check for broken relative links in docs and specs
+        run: |
+          set -euo pipefail
+          rc=0
+          while IFS= read -r file; do
+            while IFS= read -r target; do
+              # Strip any anchor, then resolve relative to the linking file.
+              path="${target%%#*}"
+              [ -z "$path" ] && continue
+              resolved="$(dirname "$file")/$path"
+              if [ ! -e "$resolved" ]; then
+                echo "::error file=$file::broken link -> $target"
+                rc=1
+              fi
+            done < <(grep -oE '\]\([^)#][^)]*\)' "$file" \
+                     | sed -E 's/^\]\(//; s/\)$//' \
+                     | grep -vE '^[a-z]+://|^mailto:')
+          done < <(find . -name '*.md' -not -path './.git/*')
+          exit $rc
