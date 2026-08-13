@@ -1,0 +1,45 @@
+# Terraform
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+
+# Real variable values — only *.example files are committed
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+
+# Ansible
+*.retry
+.facts_cache/
+ansible/collections/
+ansible/inventories/**/host_vars/**/vault.yml
+.vault_pass
+*.vault
+
+# Secrets / credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+!**/templates/*.key.j2
+
+# Python (ansible tooling)
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Editors / OS
+.DS_Store
+.idea/
+*.swp

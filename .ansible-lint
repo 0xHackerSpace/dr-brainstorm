@@ -1,0 +1,11 @@
+---
+profile: production
+
+exclude_paths:
+  - .github/
+  - .venv/
+  - docs/
+  - specs/
+
+warn_list:
+  - experimental
